@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>沒靈魂早餐店點餐系統 - v103</title>
+    <style>
+        body { font-family: Arial, sans-serif; width: 420px; margin: 40px auto; }
+        h2 { color: #d71d24; }
+        h3 { text-align: right; color: #333; margin-top: 10px;}
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: center; }
+        label { display: block; margin-top: 8px; }
+        input, select { width: calc(100% - 16px); padding: 4px; margin-top: 2px;}
+        button { background: #d71d24; color: white; border: none; padding: 6px 14px; margin-top: 12px; font-size: 15px; cursor: pointer; }
+        .delete-btn { background: #888; font-size: 12px; padding: 3px 8px; margin: 0; }
+        #price { background-color: #f0f0f0; }
+        
+        /* New styles for quantity control */
+        .quantity-control {
+            display: flex;
+            align-items: center;
+            margin-top: 4px;
+        }
+        .quantity-btn {
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 28px; /* Made larger for easier clicking */
+            padding: 0 10px;
+            line-height: 1;
+        }
+        .plus-btn {
+            color: deeppink;
+        }
+        .minus-btn {
+            color: #A7D2CB; /* Macaroon Blue */
+        }
+        #count {
+            text-align: center;
+            -moz-appearance: textfield;
+            border: 1px solid #ccc;
+            width: 60px; /* Fixed width */
+        }
+        /* Hide spinner from number input for Webkit browsers */
+        #count::-webkit-inner-spin-button, 
+        #count::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+
+        /* Shin-chan inspired colors and food emojis */
+        .fruit-emoji {
+            font-size: 240px; /* Three times larger */
+            position: fixed;
+            opacity: 0.3; /* Subtle */
+            z-index: -1; /* Behind content */
+        }
+        /* Darker colors for potential use, though emojis have their own color */
+        .shinchan-dark-red { color: #A0001F; } /* Not directly used for emojis, but for reference */
+        .shinchan-dark-yellow { color: #CCAA00; } /* Not directly used for emojis, but for reference */
+        .shinchan-dark-blue { color: #0055AA; } /* Not directly used for emojis, but for reference */
+
+        /* Irregular placement for 5 food items */
+        #fruit1 { top: 15%; left: 5%; } /* Hamburger - Adjusted */
+        #fruit2 { bottom: 25%; right: 5%; } /* Toast - Adjusted */
+        #fruit3 { top: 30%; left: 70%; } /* Tomato */
+        #fruit4 { bottom: 5%; left: 30%; } /* Fried Egg */
+        #fruit5 { top: 60%; right: 20%; } /* Bubble Tea */
+
+        #misaeImage {
+            max-width: 100%; /* Ensure it doesn't overflow horizontally */
+            max-height: 66.66vh; /* Two-thirds of viewport height */
+            object-fit: contain; /* Contain the image within the bounds, showing full image */
+            position: fixed;
+            /* top, left will be set by JS */
+            z-index: 9999; /* Ensure it's on top */
+            display: none; /* Initially hidden */
+            transition: transform 0.6s ease-out; /* Smooth scaling transition */
+        }
+    </style>
+</head>
+<body>
+    <img id="misaeImage" src="美冴發火02.png" alt="美冴發火" style="display: none;">
+
+    <div id="fruit1" class="fruit-emoji">🍔</div>
+    <div id="fruit2" class="fruit-emoji">🍞</div>
+    <div id="fruit3" class="fruit-emoji">🍅</div>
+    <div id="fruit4" class="fruit-emoji">🍳</div>
+    <div id="fruit5" class="fruit-emoji">🧋</div>
+
+    <h2>沒靈魂早餐店</h2>
+    <div id="orderForm">
+        <label>品名
+            <select id="itemSelect"></select>
+        </label>
+        <label>調味/客製
+            <select id="customizeSelect"></select>
+        </label>
+        <label>數量</label>
+        <div class="quantity-control">
+            <button type="button" id="decrementBtn" class="quantity-btn minus-btn">⧿</button>
+            <input type="number" id="count" min="1" value="1">
+            <button type="button" id="incrementBtn" class="quantity-btn plus-btn">⧾</button>
+        </div>
+        <label>價格
+            <input type="number" id="price" readonly>
+        </label>
+        <button id="addItemBtn">加入購物咘咘車</button>
+    </div>
+
+    <h2 style="margin-top: 30px;">目前訂單 ▼</h2>
+    <table id="currentOrder">
+        <thead>
+            <tr>
+                <th>品名</th>
+                <th>調味</th>
+                <th>數量</th>
+                <th>價格</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="orderBody">
+            <!-- 點餐項目會顯示在這裡 -->
+        </tbody>
+    </table>
+    <div id="totalCostContainer">
+        <h3>合計費用：<span id="totalPrice">0</span> 元</h3>
+    </div>
+
+    <script>
+    const menuData = {
+        "大麥克漢堡 $85": { price: 85, customize: ["正常", "去酸黃瓜"] },
+        "麥克雞塊(6塊) $45": { price: 45, customize: ["番茄醬包", "糖醋醬"] },
+        "薯條(L) $30": { price: 30, customize: ["正常", "去鹽"] },
+        "可樂(中) $25": { price: 25, customize: ["正常", "去冰"] }
+    };
+
+    const itemSelect = document.getElementById('itemSelect');
+    const customizeSelect = document.getElementById('customizeSelect');
+    const countInput = document.getElementById('count');
+    const priceInput = document.getElementById('price');
+    const addItemBtn = document.getElementById('addItemBtn');
+    const orderBody = document.getElementById('orderBody');
+    const totalPriceSpan = document.getElementById('totalPrice');
+    const incrementBtn = document.getElementById('incrementBtn');
+    const decrementBtn = document.getElementById('decrementBtn');
+
+    // --- Functions ---
+    function populateItems() {
+        Object.keys(menuData).forEach(itemName => {
+            const option = document.createElement('option');
+            option.value = itemName;
+            option.textContent = itemName;
+            itemSelect.appendChild(option);
+        });
+    }
+
+    function updateCustomization() {
+        const selectedItem = itemSelect.value;
+        const customizations = menuData[selectedItem].customize;
+        
+        customizeSelect.innerHTML = ''; // Clear previous options
+        customizations.forEach(cust => {
+            const option = document.createElement('option');
+            option.value = cust;
+            option.textContent = cust;
+            customizeSelect.appendChild(option);
+        });
+    }
+
+    function updatePrice() {
+        const selectedItem = itemSelect.value;
+        const basePrice = menuData[selectedItem].price;
+        const quantity = parseInt(countInput.value, 10) || 0;
+        priceInput.value = basePrice * quantity;
+    }
+    
+    function updateTotalCost() {
+        let total = 0;
+        const rows = orderBody.querySelectorAll('tr');
+        rows.forEach(row => {
+            const priceCell = row.cells[3]; // 價格是第4個欄位
+            total += parseInt(priceCell.textContent, 10);
+        });
+        totalPriceSpan.textContent = total;
+    }
+
+    function addItem() {
+        const name = itemSelect.value;
+        const customize = customizeSelect.value;
+        const count = countInput.value;
+        const price = priceInput.value;
+
+        if (!name || count < 1 || !price || price === '0') {
+            alert('請確認已選擇品項與數量！');
+            return;
+        }
+
+        const newRow = document.createElement('tr');
+        newRow.innerHTML = `
+            <td>${name}</td>
+            <td>${customize}</td>
+            <td>${count}</td>
+            <td>${price}</td>
+            <td><button class="delete-btn" onclick="deleteItem(this)">刪除</button></td>
+        `;
+        orderBody.appendChild(newRow);
+        updateTotalCost();
+    }
+
+    function deleteItem(button) {
+        const row = button.parentNode.parentNode;
+        orderBody.removeChild(row);
+        updateTotalCost();
+    }
+
+    // --- Event Listeners ---
+    itemSelect.addEventListener('change', () => {
+        // 重置數量為1
+        countInput.value = 1;
+        updateCustomization();
+        updatePrice();
+    });
+
+    countInput.addEventListener('input', updatePrice);
+
+    addItemBtn.addEventListener('click', addItem);
+
+    incrementBtn.addEventListener('click', () => {
+        countInput.value = parseInt(countInput.value, 10) + 1;
+        updatePrice();
+    });
+
+    decrementBtn.addEventListener('click', () => {
+        const count = parseInt(countInput.value, 10);
+        if (count > 1) {
+            countInput.value = count - 1;
+            updatePrice();
+        }
+    });
+
+    // --- Initial Setup ---
+    document.addEventListener('DOMContentLoaded', () => {
+        populateItems();
+        // Trigger change to set initial customize options and price
+        itemSelect.dispatchEvent(new Event('change'));
+
+        // Start Misae Image Animation
+        const misaeImage = document.getElementById('misaeImage');
+        let misaeCount = 0;
+        const misaeMaxCount = 12; // Changed to 12
+        const misaeShowDuration = 700; // 0.7 seconds - Changed from 200
+        const misaeHideDuration = 3000; // 3 seconds
+
+        function animateMisaeImage() {
+            if (misaeCount < misaeMaxCount) {
+                // Reset transition for immediate scale(0)
+                misaeImage.style.transition = 'none';
+                misaeImage.style.transform = 'scale(0)'; // Start small
+
+                // Random position
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+
+                // Get actual image dimensions after it's loaded and potentially scaled by max-width/height
+                // This is a bit tricky as naturalWidth/Height might not reflect rendered size with object-fit: contain
+                // For simplicity, let's assume the image will roughly fit within 80% of viewport width/height for random placement
+                const estimatedImageWidth = Math.min(misaeImage.naturalWidth || viewportWidth * 0.8, viewportWidth);
+                const estimatedImageHeight = Math.min(misaeImage.naturalHeight || viewportHeight * 0.6, viewportHeight * 0.66);
+
+                const randomTop = Math.random() * (viewportHeight - estimatedImageHeight);
+                const randomLeft = Math.random() * (viewportWidth - estimatedImageWidth);
+
+                misaeImage.style.top = `${randomTop}px`;
+                misaeImage.style.left = `${randomLeft}px`;
+                misaeImage.style.display = 'block'; // Show image
+
+                // Trigger scale animation after a very short delay to ensure scale(0) is rendered
+                setTimeout(() => {
+                    misaeImage.style.transition = `transform ${misaeShowDuration / 1000}s ease-out`; // Apply transition
+                    misaeImage.style.transform = 'scale(1)'; // Scale to normal size
+                }, 10); // Small delay
+
+                setTimeout(() => {
+                    misaeImage.style.display = 'none'; // Hide image after 0.7s
+                    misaeCount++;
+                    if (misaeCount < misaeMaxCount) {
+                        setTimeout(animateMisaeImage, misaeHideDuration); // Call again after 3s
+                    }
+                }, misaeShowDuration);
+            }
+        }
+        setTimeout(animateMisaeImage, misaeHideDuration); // Initial delay before first show
+    });
+    </script>
+</body>
+</html>
